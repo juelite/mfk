@@ -7,10 +7,24 @@ import (
 	"mfk/logic"
 )
 
-var serverCmd = &cobra.Command{
-	Use:   		"new",
-	Example: 	"mfk new -n blog  创建一个名为[blog]的项目",
-	Short: "创建一个新的项目",
+var newCmd = &cobra.Command{
+	Use:     "new",
+	Example: "mfk new -n blog",
+	Short:   "创建一个新的项目",
+	Run: func(cmd *cobra.Command, args []string) {
+		defer func() {
+			if err := recover(); err != nil {
+				log.Println("Recover error : ", err)
+			}
+		}()
+		logic.New()
+	},
+}
+
+var runCmd = &cobra.Command{
+	Use:     "run",
+	Example: "mfk run",
+	Short:   "运行项目",
 	Run: func(cmd *cobra.Command, args []string) {
 		defer func() {
 			if err := recover(); err != nil {
@@ -21,7 +35,23 @@ var serverCmd = &cobra.Command{
 	},
 }
 
+var packCmd = &cobra.Command{
+	Use:     "pack",
+	Example: "mfk pack",
+	Short:   "项目打包",
+	Run: func(cmd *cobra.Command, args []string) {
+		defer func() {
+			if err := recover(); err != nil {
+				log.Println("Recover error : ", err)
+			}
+		}()
+		logic.Pack()
+	},
+}
+
 func init() {
-	serverCmd.Flags().StringVarP(&logic.NewProject, "name", "n", "", "项目名称")
-	rootCmd.AddCommand(serverCmd)
+	newCmd.Flags().StringVarP(&logic.NewProject, "name", "n", "", "项目名称")
+	rootCmd.AddCommand(newCmd)
+	rootCmd.AddCommand(runCmd)
+	rootCmd.AddCommand(packCmd)
 }

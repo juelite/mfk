@@ -3,15 +3,14 @@ package logic
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
-
-	"mfk/common"
 )
 
 var (
-	DirSep 			string
-	NewProject 		string
+	DirSep     string
+	NewProject string
 )
 
 func init() {
@@ -22,17 +21,15 @@ func init() {
 	}
 }
 
-func Run() {
+func New() {
 	if NewProject == "" {
-		fmt.Println("请输入项目名称")
+		fmt.Println("please enter project name !")
 		os.Exit(0)
 	}
-	err, res, _ := common.ExecCommand("pwd")
+	res, err := filepath.Abs(filepath.Dir(os.Args[0]))
 	if err != nil {
-		fmt.Println("获取当前路径出错")
+		fmt.Println("get current path error !")
 	}
-
-
 
 	dir := strings.Replace(res, "\n", "", -1) + DirSep + NewProject
 
@@ -42,30 +39,128 @@ func Run() {
 	root_main(dir)
 
 	if err != nil {
-		fmt.Println("目录创建失败：", err.Error())
+		fmt.Println(fmt.Sprintf("mkdir [%s] error : %s !", NewProject, err.Error()))
 	}
 
 	dir_map := []string{
 		"app",
 		"cmd",
 		"server",
+		"util",
 	}
 
 	// 创建文件夹
 	for _, v := range dir_map {
 		path := dir + DirSep + v
-		fmt.Println("写入目录：", v)
+		fmt.Println(fmt.Sprintf("create dir: [%s]", v))
 		err := os.Mkdir(path, 0755)
 		//写入文件下文件
 		if err != nil {
-			fmt.Println("没有权限创建目录")
+			fmt.Println(fmt.Sprintf("mkdir [%s] error : %s !", v, err.Error()))
+			return
 		}
 	}
 	app_files(dir + DirSep + "app")
 	cmd_files(dir + DirSep + "cmd")
 	server_files(dir + DirSep + "server")
+	util_files(dir + DirSep + "util")
 
-	fmt.Println("初始化完成！")
+	fmt.Println(fmt.Sprintf("new [%s] complete !", NewProject))
+}
+
+// util文件
+func util_files(path string) {
+	err := os.Mkdir(path+DirSep+"config", 0755)
+	if err != nil {
+		fmt.Println("mkdir [config] error !")
+		return
+	}
+	ctn := `package config
+
+import (
+	"log"
+	"strconv"
+	"sync"
+
+	"github.com/Unknwon/goconfig"
+)
+
+const (
+	conf_dir 	= "./app/conf/"
+)
+
+var (
+	env 		string
+	conf 		map[string]string
+	err 		error
+)
+
+func init() {
+	once := &sync.Once{}
+	once.Do(loadConf)
+}
+
+func loadConf() {
+	c , err := goconfig.LoadConfigFile(conf_dir + "env.conf")
+	if err != nil {
+		log.Fatal("load env file error")
+	}
+	env , err = c.GetValue("" , "runmode")
+
+	if err != nil {
+		log.Fatal("parse env file error")
+	}
+
+	c , err = goconfig.LoadConfigFile(conf_dir + "app.conf")
+	if err != nil {
+		log.Fatal("load config file error")
+	}
+	conf, err = c.GetSection(env)
+	if err != nil {
+		log.Fatal("parse config file error")
+	}
+}
+
+// 获取运行环境
+func GetEnv() string {
+	return env
+}
+
+// 获取string
+func GetString(key string) string {
+	if val, ok := conf[key]; ok {
+		return val
+	}
+	return ""
+}
+
+// 获取int64
+func GetInt64(key string) int64 {
+	if val, ok := conf[key]; ok {
+		i, _ := strconv.ParseInt(val, 10, 64)
+		return i
+	}
+	return 0
+}
+
+// 获取bool
+func GetBool(key string) bool {
+	var res bool
+	if val, ok := conf[key]; ok {
+		if val == "true" {
+			res = true
+		}
+	}
+	return res
+}`
+	f, err := os.Create(path + DirSep + "config" + DirSep + "config.go")
+	if err != nil {
+		fmt.Println("writer filer err")
+		return
+	}
+	defer f.Close()
+
+	f.Write([]byte(ctn))
 }
 
 // server文件
@@ -79,21 +174,18 @@ import (
 	"net/http"
 	"os"
 
-	"`+NewProject+`/app"
-	pb "`+NewProject+`/app/proto"
+	"` + NewProject + `/app"
+	pb "` + NewProject + `/app/protos"
+	"` + NewProject + `/util/config"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 )
 
-var (
-	GrpcPort 		string
-	HttpPort 		string
-)
 
 func Run() {
-	GrpcEndPoint := ":" + GrpcPort
-	HttpEndPoint := ":" + HttpPort
+	GrpcEndPoint := ":" + config.GetString("grpc_port")
+	HttpEndPoint := ":" + config.GetString("http_port")
 
 	go startGrpc(GrpcEndPoint)
 	startHttp(HttpEndPoint, GrpcEndPoint)
@@ -136,7 +228,7 @@ func startHttp(HttpEndPoint, GrpcEndPoint string) {
 }`
 	f, err := os.Create(path + DirSep + "server.go")
 	if err != nil {
-		fmt.Println("写入文件失败")
+		fmt.Println("writer filer err")
 		return
 	}
 	defer f.Close()
@@ -157,7 +249,7 @@ func app_files(path string) {
 	// 创建文件夹
 	for _, v := range dir_map {
 		path := path + DirSep + v
-		fmt.Println("写入目录：", v)
+		fmt.Println(fmt.Sprintf("create dir: [%s]", v))
 		err := os.Mkdir(path, 0755)
 		//写入文件下文件
 		if err != nil {
@@ -166,6 +258,42 @@ func app_files(path string) {
 	}
 	app_client(path + DirSep + "client")
 	app_proto(path + DirSep + "protos")
+	app_config(path + DirSep + "conf")
+}
+
+// app_config
+func app_config(path string) {
+	ctn := `# 运行模式
+runmode = prod`
+	f, err := os.Create(path + DirSep + "env.conf")
+	if err != nil {
+		fmt.Println("写入文件失败")
+		return
+	}
+	defer f.Close()
+
+	f.Write([]byte(ctn))
+
+	ctn1 := `[dev]
+http_port       = 40001
+grpc_port       = 50001
+
+[release]
+http_port       = 40002
+grpc_port       = 50002
+
+[prod]
+http_port       = 40003
+grpc_port       = 50003`
+
+	f, err = os.Create(path + DirSep + "app.conf")
+	if err != nil {
+		fmt.Println("写入文件失败")
+		return
+	}
+	defer f.Close()
+
+	f.Write([]byte(ctn1))
 }
 
 // app proto
@@ -229,7 +357,7 @@ func app_client(path string) {
 
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
-	pb "`+NewProject+`/app/proto"
+	pb "` + NewProject + `/app/protos"
 )
 
 func main() {
@@ -264,47 +392,6 @@ func main() {
 // cmd文件
 func cmd_files(path string) {
 	cmd_root(path)
-	cmd_server(path)
-}
-
-// cmd/server.go
-func cmd_server(path string) {
-	ctn := `package cmd
-
-import (
-	"log"
-
-	"github.com/spf13/cobra"
-	"demo/server"
-)
-
-var serverCmd = &cobra.Command{
-	Use:   "server",
-	Short: "Run the gRPC server",
-	Run: func(cmd *cobra.Command, args []string) {
-		defer func() {
-			if err := recover(); err != nil {
-				log.Println("Recover error : ", err)
-			}
-		}()
-		server.Run()
-	},
-}
-
-func init() {
-	serverCmd.Flags().StringVarP(&server.GrpcPort, "GrpcPort", "", "50001", "grpc port")
-	serverCmd.Flags().StringVarP(&server.HttpPort, "HttpPort", "", "40001", "http port")
-	rootCmd.AddCommand(serverCmd)
-}`
-
-	f, err := os.Create(path + DirSep + "server.go")
-	if err != nil {
-		fmt.Println("写入文件失败")
-		return
-	}
-	defer f.Close()
-
-	f.Write([]byte(ctn))
 }
 
 // cmd/root.go
@@ -314,13 +401,23 @@ func cmd_root(path string) {
 import (
 	"fmt"
 	"os"
+	"log"
 
 	"github.com/spf13/cobra"
+	"` + NewProject + `/server"
 )
 
 var rootCmd = &cobra.Command{
 	Use:   "grpc",
 	Short: "Run the gRPC server",
+	Run: func(cmd *cobra.Command, args []string) {
+		defer func() {
+			if err := recover(); err != nil {
+				log.Println("Recover error : ", err)
+			}
+		}()
+		server.Run()
+	},
 }
 
 func Execute() {
@@ -347,6 +444,7 @@ package main
 
 import (
 	"` + NewProject + `/cmd"
+	_ "` + NewProject + `/util/config"
 )
 
 func main() {
@@ -361,4 +459,140 @@ func main() {
 	defer f.Close()
 
 	f.Write([]byte(ctn))
+
+	f2, err := os.Create(dir + DirSep + "README.md")
+	if err != nil {
+		fmt.Println("写入文件失败")
+		return
+	}
+	defer f2.Close()
+
+	f2.Write([]byte(readme()))
+}
+
+func readme() string {
+	ctn := "## 蜜蜂控微服务脚手架说明文档\n"
+	ctn += "\n"
+	ctn += "### 使用文档\n"
+	ctn += "\n"
+	ctn += "#### 1. 获取脚手架工具\n"
+	ctn += "\n"
+	ctn += "```$xslt\n"
+	ctn += "    go get github.com/juelite/mfk\n"
+	ctn += "```\n"
+	ctn += "\n"
+	ctn += "#### 2. 编译脚手架工具并将其放入环境变量\n"
+	ctn += "\n"
+	ctn += "```$xslt\n"
+	ctn += "    cd $GOAPTH/src/github.com/juelite/mfk\n"
+	ctn += "    \n"
+	ctn += "    go build -o $GOPATH/bin main.go\n"
+	ctn += "```\n"
+	ctn += "\n"
+	ctn += "#### 3. 创建服务目录及机构\n"
+	ctn += "\n"
+	ctn += "```$xslt\n"
+	ctn += "    mfk new -n demo\n"
+	ctn += "```\n"
+	ctn += "\n"
+	ctn += "创建成功后结构如下：\n"
+	ctn += "\n"
+	ctn += "```$xslt\n"
+	ctn += "    .\n"
+	ctn += "    ├── README.md               说明文档\n"
+	ctn += "    ├── app                     服务目录（所有服务逻辑都在此编写）\n"
+	ctn += "    │   ├── client              测试客户端目录\n"
+	ctn += "    │   │   └── client.go       测试客户端\n"
+	ctn += "    │   ├── conf                配置文件目录\n"
+	ctn += "    │   ├── main.go             业务入口\n"
+	ctn += "    │   ├── logic               业务逻辑\n"
+	ctn += "    │   ├── model               业务模型\n"
+	ctn += "    │   └── proto               protobuf文件及生成的pb文件\n"
+	ctn += "    │       ├── hello.proto     服务元信息文件\n"
+	ctn += "    │       └── protoc.sh       将服元原信息生成pb文件脚本\n"
+	ctn += "    ├── cmd                     终端辅助文件目录\n"
+	ctn += "    │   ├── root.go             \n"
+	ctn += "    │   └── server.go\n"
+	ctn += "    ├── main.go                 服务启动为恩建\n"
+	ctn += "    └── server                  server目录\n"
+	ctn += "        └── server.go           server文件\n"
+	ctn += "\n"
+	ctn += "```\n"
+	ctn += "\n"
+	ctn += "#### 4. 编写服务元信息文件 （app/proto）:\n"
+	ctn += "\n"
+	ctn += "示例：\n"
+	ctn += "\n"
+	ctn += "```$xslt\n"
+	ctn += "    syntax = \"proto3\";\n"
+	ctn += "    \n"
+	ctn += "    package proto;\n"
+	ctn += "    \n"
+	ctn += "    import \"google/api/annotations.proto\";\n"
+	ctn += "    \n"
+	ctn += "    // 服务名称\n"
+	ctn += "    service HelloWorld {\n"
+	ctn += "        \n"
+	ctn += "        // 方法名称\n"
+	ctn += "        rpc SayHelloWorld(HelloWorldRequest) returns (HelloWorldResponse) {\n"
+	ctn += "            \n"
+	ctn += "            // 定义http访问路由和方法\n"
+	ctn += "            option (google.api.http) = {\n"
+	ctn += "                post: \"/hello_world\"\n"
+	ctn += "                body: \"*\"\n"
+	ctn += "            };\n"
+	ctn += "        }\n"
+	ctn += "    }\n"
+	ctn += "    \n"
+	ctn += "    // 请求参数定义\n"
+	ctn += "    message HelloWorldRequest {\n"
+	ctn += "        string referer = 1;\n"
+	ctn += "    }\n"
+	ctn += "    \n"
+	ctn += "    // 返回参数定义\n"
+	ctn += "    message HelloWorldResponse {\n"
+	ctn += "        string message = 1;\n"
+	ctn += "    }\n"
+	ctn += "```\n"
+	ctn += "\n"
+	ctn += "编写完成后 执行 ./protoc.sh （脚本里面proto文件名需要与上面文件名一致）\n"
+	ctn += "\n"
+	ctn += "会生成 .pb.go 和 .pb.gw.go 两个文件 分别文grpc和grpc-gateway文件\n"
+	ctn += "\n"
+	ctn += "#### 5. 编写业务入口文件（app/main.go）\n"
+	ctn += "\n"
+	ctn += "```$xslt\n"
+	ctn += "    package app\n"
+	ctn += "    \n"
+	ctn += "    import (\n"
+	ctn += "        pb \"demo/app/proto\"\n"
+	ctn += "        \"golang.org/x/net/context\"\n"
+	ctn += "    )\n"
+	ctn += "    \n"
+	ctn += "    type helloSrv struct{}\n"
+	ctn += "    \n"
+	ctn += "    func NewHelloSrv() *helloSrv {\n"
+	ctn += "        return &helloSrv{}\n"
+	ctn += "    }\n"
+	ctn += "    \n"
+	ctn += "    func (h helloSrv) SayHelloWorld(ctx context.Context, r *pb.HelloWorldRequest) (*pb.HelloWorldResponse, error) {\n"
+	ctn += "        // TODO your logic\n"
+	ctn += "        return &pb.HelloWorldResponse{\n"
+	ctn += "            Message: \"test\",\n"
+	ctn += "        }, nil\n"
+	ctn += "    }\n"
+	ctn += "```\n"
+	ctn += "\n"
+	ctn += "#### 6. 注册服务（server/server.go）\n"
+	ctn += "\n"
+	ctn += "修改 【pb.*】方法为实际的接口方法\n"
+	ctn += "\n"
+	ctn += "#### 7. 运行服务\n"
+	ctn += "\n"
+	ctn += "```$xslt\n"
+	ctn += "    // 不指定端口默认 grpc 50001 http 40001\n"
+	ctn += "    go run main.go server [-GrpcPort 50001] [-HttpPort 40001]  \n"
+	ctn += "```\n"
+
+	return ctn
 }

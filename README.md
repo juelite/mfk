@@ -16,7 +16,7 @@
     go build -o $GOPATH/bin main.go
 ```
 
-#### 3. 创建服务目录及机构
+#### 3. 创建服务目录及结构
 
 ```$xslt
     mfk new -n demo
@@ -31,6 +31,8 @@
     │   ├── client              测试客户端目录
     │   │   └── client.go       测试客户端
     │   ├── conf                配置文件目录
+    │   │   ├── app.conf        项目配置文件
+    │   │   └── env.conf        运行环境文件
     │   ├── main.go             业务入口
     │   ├── logic               业务逻辑
     │   ├── model               业务模型
@@ -38,11 +40,13 @@
     │       ├── hello.proto     服务元信息文件
     │       └── protoc.sh       将服元原信息生成pb文件脚本
     ├── cmd                     终端辅助文件目录
-    │   ├── root.go             
-    │   └── server.go
+    │   └── server.go           
     ├── main.go                 服务启动为恩建
-    └── server                  server目录
-        └── server.go           server文件
+    ├── server                  
+    │   └── server.go           服务注册脚本
+    └── util                    工具包
+        └── config              配置文件解析包
+            └── config.go       获取配置方法
 
 ```
 
